@@ -77,7 +77,9 @@ def check_auto_update():
         with urllib.request.urlopen(req, timeout=5) as response:
             if response.status != 200:
                 return
-            remote_code = response.read().decode("utf-8")
+            remote_bytes = response.read()
+
+        remote_code = remote_bytes.decode("utf-8")
 
         # Validasi keamanan: pastikan bukan halaman error/404 dan sintaks python valid
         if "def main():" not in remote_code or "LinkAja" not in remote_code:
@@ -86,13 +88,17 @@ def check_auto_update():
         compile(remote_code, "<update_check>", "exec")
 
         script_path = os.path.abspath(__file__)
-        with open(script_path, "r", encoding="utf-8") as f:
-            local_code = f.read()
+        with open(script_path, "rb") as f:
+            local_bytes = f.read()
 
-        if remote_code.strip() != local_code.strip():
+        # Normalisasi karakter baris agar tidak terjadi loop perulangan di Windows/Termux
+        norm_remote = remote_bytes.replace(b"\r\n", b"\n").strip()
+        norm_local = local_bytes.replace(b"\r\n", b"\n").strip()
+
+        if norm_remote != norm_local:
             console.print("\n[bold bright_yellow][!] Terdeteksi versi baru di GitHub! Mengunduh pembaruan...[/bold bright_yellow]")
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(remote_code)
+            with open(script_path, "wb") as f:
+                f.write(norm_remote)
             console.print("[bold bright_green][OK] Update berhasil dipasang! Memulai ulang bot...[/bold bright_green]\n")
             time.sleep(1)
             os.execv(sys.executable, [sys.executable, script_path] + sys.argv[1:])
