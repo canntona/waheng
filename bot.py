@@ -3222,7 +3222,7 @@ def menu_scan_bonus():
 
     table_siap = Table(show_header=True, header_style="bold bright_cyan", box=box.ROUNDED, padding=(0, 1), expand=False)
     table_siap.add_column("No", justify="center", style="bold yellow", width=2)
-    table_siap.add_column("Nomor HP", style="bright_white", width=12)
+    table_siap.add_column("Nomor HP", style="bright_white", width=14, no_wrap=True)
     table_siap.add_column("Bonus", justify="right", style="bright_magenta", width=6)
     table_siap.add_column("Utama", justify="right", style="bright_yellow", width=6)
     table_siap.add_column("Total", justify="right", style="bold bright_green", width=7)
