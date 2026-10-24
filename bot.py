@@ -121,7 +121,51 @@ REMOTE_CONFIG = {
     "allowed_users": []
 }
 
-def report_to_google_sheet(rows: list[dict]):
+def get_hardware_id() -> str:
+    """Menghasilkan Hardware ID unik permanen untuk mengunci 1 lisensi hanya pada 1 perangkat."""
+    hw_parts = []
+    try:
+        res = subprocess.run(["settings", "get", "secure", "android_id"], capture_output=True, text=True, timeout=1)
+        if res.returncode == 0 and res.stdout.strip() and res.stdout.strip() != "null":
+            hw_parts.append(res.stdout.strip())
+    except Exception:
+        pass
+    try:
+        res = subprocess.run(["getprop", "ro.serialno"], capture_output=True, text=True, timeout=1)
+        if res.returncode == 0 and res.stdout.strip():
+            hw_parts.append(res.stdout.strip())
+    except Exception:
+        pass
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography")
+        guid, _ = winreg.QueryValueEx(key, "MachineGuid")
+        if guid:
+            hw_parts.append(guid)
+    except Exception:
+        pass
+    try:
+        node = uuid.getnode()
+        if node and node != 0:
+            hw_parts.append(str(node))
+    except Exception:
+        pass
+
+    dev_file = ROOT / ".device_hwid"
+    if not hw_parts:
+        if dev_file.exists():
+            return dev_file.read_text(encoding="utf-8").strip()
+        new_id = f"HWID-{uuid.uuid4().hex[:12].upper()}"
+        try:
+            dev_file.write_text(new_id, encoding="utf-8")
+        except Exception:
+            pass
+        return new_id
+
+    combined = ":".join(hw_parts)
+    return "HWID-" + hashlib.sha256(combined.encode()).hexdigest()[:12].upper()
+
+def report_to_google_sheet(rows):
     """Mengirim data laporan hasil sortir ke Google Sheets secara asinkron (background)."""
     url = REMOTE_CONFIG.get("sheet_url") or GOOGLE_SHEET_URL
     if not url.strip() or not rows:
@@ -211,6 +255,29 @@ def check_remote_security():
                 pass
 
         CURRENT_USERNAME = saved_user
+
+        # 4. Penguncian Perangkat (1 Lisensi = 1 HP/Perangkat)
+        hwid = get_hardware_id()
+        sheet_url = REMOTE_CONFIG.get("sheet_url") or GOOGLE_SHEET_URL
+        if sheet_url.strip():
+            try:
+                check_payload = {
+                    "action": "bind_device",
+                    "lisensi": user_lic,
+                    "hwid": hwid,
+                    "username": saved_user,
+                    "waktu": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                }
+                r = requests.post(sheet_url, json=check_payload, timeout=8)
+                if r.status_code == 200:
+                    resp_json = r.json()
+                    if resp_json.get("status") == "error" and resp_json.get("reason") == "DEVICE_MISMATCH":
+                        console.print(f"\n[bold red]{msg}[/bold red]")
+                        console.print(f"[bold red][X] LISENSI INI SUDAH TERIKAT PADA HP LAIN (1 LISENSI = 1 PERANGKAT)![/bold red]\n")
+                        time.sleep(2)
+                        sys.exit(0)
+            except Exception:
+                pass
 
 # ============================================================
 # MODUL INTEGRASI 1: DEVICEFREE CRYPTO STACK
