@@ -61,7 +61,7 @@ console = Console()
 # ============================================================
 # Masukkan URL Raw GitHub tempat script ini diunggah untuk auto-update
 # Contoh: "https://raw.githubusercontent.com/<username>/<repo>/main/bot.py"
-GITHUB_RAW_URL = ""
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/canntona/waheng/main/bot.py"
 
 def check_auto_update():
     """Memeriksa dan memperbarui script secara otomatis dari GitHub Raw jika tersedia."""
