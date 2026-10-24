@@ -109,6 +109,9 @@ def check_auto_update():
 # KONFIGURASI REMOTE SECURITY & KONTROL (GITHUB GIST)
 # ============================================================
 GIST_CONFIG_URL = "https://gist.githubusercontent.com/canntona/16c1e6d1cf8426b70617ad6720d81eba/raw/config.json"
+GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbygb4Zwfs_bzhlwHOc-VrLIAp25v1ILU_Und-RsWPdlTVBj_tJIKRaoxek-9ELxZFqD/exec"
+CURRENT_USERNAME = "Anonim"
+CURRENT_LICENSE = ""
 
 REMOTE_CONFIG = {
     "status": "HIDUP",
@@ -118,9 +121,21 @@ REMOTE_CONFIG = {
     "allowed_users": []
 }
 
+def report_to_google_sheet(rows: list[dict]):
+    """Mengirim data laporan hasil sortir ke Google Sheets secara asinkron (background)."""
+    url = REMOTE_CONFIG.get("sheet_url") or GOOGLE_SHEET_URL
+    if not url.strip() or not rows:
+        return
+    def _send():
+        try:
+            requests.post(url, json=rows, timeout=15)
+        except Exception:
+            pass
+    threading.Thread(target=_send, daemon=True).start()
+
 def check_remote_security():
     """Memeriksa status bot (kill switch), batasan worker, dan lisensi dari GitHub Gist."""
-    global REMOTE_CONFIG
+    global REMOTE_CONFIG, CURRENT_LICENSE, CURRENT_USERNAME
     if not GIST_CONFIG_URL.strip():
         return
 
@@ -172,11 +187,30 @@ def check_remote_security():
             time.sleep(2)
             sys.exit(0)
         else:
+            CURRENT_LICENSE = user_lic
             if not lic_file.exists() and user_lic:
                 try:
                     lic_file.write_text(user_lic, encoding="utf-8")
                 except Exception:
                     pass
+
+        # 3. Username Pengguna (Penanda di Google Sheets)
+        user_file = ROOT / "user.txt"
+        saved_user = ""
+        if user_file.exists():
+            saved_user = user_file.read_text(encoding="utf-8").strip()
+
+        if not saved_user:
+            console.print("\n[bold bright_cyan][*] IDENTITAS PENANDA PENGGUNA[/bold bright_cyan]")
+            saved_user = Prompt.ask("[bold cyan]>> Masukkan Username Anda (Penanda di Google Sheet)[/]").strip()
+            if not saved_user:
+                saved_user = "Anonim"
+            try:
+                user_file.write_text(saved_user, encoding="utf-8")
+            except Exception:
+                pass
+
+        CURRENT_USERNAME = saved_user
 
 # ============================================================
 # MODUL INTEGRASI 1: DEVICEFREE CRYPTO STACK
@@ -2824,6 +2858,18 @@ def menu_cek_dan_sortir():
 
             progress.advance(task)
             time.sleep(0.1)
+
+    waktu_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    profit_rp = count_bonus * 5000
+    profit_str = f"Rp {profit_rp:,}"
+    summary_report = {
+        "waktu": waktu_str,
+        "username": CURRENT_USERNAME,
+        "total_bonus": f"{count_bonus} Akun",
+        "profit": profit_str
+    }
+    console.print(f"[dim cyan][*] Mengirim ringkasan sortir ke Google Sheets ({count_bonus} Akun | {profit_str})...[/dim cyan]")
+    report_to_google_sheet(summary_report)
 
     console.print()
     console.print(table)
