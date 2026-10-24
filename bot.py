@@ -2861,12 +2861,14 @@ def menu_cek_dan_sortir():
 
     waktu_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     profit_rp = count_bonus * 5000
-    profit_str = f"Rp {profit_rp:,}"
+    profit_str = f"Rp {profit_rp:,}".replace(",", ".")
     summary_report = {
         "waktu": waktu_str,
         "username": CURRENT_USERNAME,
         "total_bonus": f"{count_bonus} Akun",
-        "profit": profit_str
+        "profit": profit_str,
+        "lisensi": f"{count_bonus} Akun",
+        "nomor_hp": profit_str,
     }
     console.print(f"[dim cyan][*] Mengirim ringkasan sortir ke Google Sheets ({count_bonus} Akun | {profit_str})...[/dim cyan]")
     report_to_google_sheet(summary_report)
