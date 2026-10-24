@@ -100,6 +100,79 @@ def check_auto_update():
         pass
 
 # ============================================================
+# KONFIGURASI REMOTE SECURITY & KONTROL (GITHUB GIST)
+# ============================================================
+GIST_CONFIG_URL = "https://gist.githubusercontent.com/canntona/16c1e6d1cf8426b70617ad6720d81eba/raw/config.json"
+
+REMOTE_CONFIG = {
+    "status": "HIDUP",
+    "maintenance_msg": "BAD REQUEST 503 Required request body is missing or malformed",
+    "min_workers": 1,
+    "max_workers": 5,
+    "allowed_users": []
+}
+
+def check_remote_security():
+    """Memeriksa status bot (kill switch), batasan worker, dan lisensi dari GitHub Gist."""
+    global REMOTE_CONFIG
+    if not GIST_CONFIG_URL.strip():
+        return
+
+    url = GIST_CONFIG_URL.strip()
+    sep = "&" if "?" in url else "?"
+    req_url = f"{url}{sep}_={int(time.time())}"
+
+    try:
+        req = urllib.request.Request(
+            req_url,
+            headers={"User-Agent": "Mozilla/5.0", "Cache-Control": "no-cache"}
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode("utf-8"))
+                if isinstance(data, dict):
+                    REMOTE_CONFIG.update(data)
+    except Exception:
+        pass
+
+    # 1. Kill Switch / Maintenance Status
+    st = str(REMOTE_CONFIG.get("status", "HIDUP")).strip().upper()
+    if st != "HIDUP":
+        msg = REMOTE_CONFIG.get("maintenance_msg", "BAD REQUEST 503 Required request body is missing or malformed")
+        console.print(f"\n[bold red]{msg}[/bold red]\n")
+        time.sleep(2)
+        sys.exit(0)
+
+    # 2. Lisensi User
+    allowed = REMOTE_CONFIG.get("allowed_users", [])
+    if allowed:
+        lic_file = ROOT / "license.txt"
+        user_lic = ""
+        if lic_file.exists():
+            user_lic = lic_file.read_text(encoding="utf-8").strip()
+
+        if not user_lic:
+            console.print("\n[bold bright_cyan][*] VALIDASI LISENSI PENGGUNA[/bold bright_cyan]")
+            user_lic = Prompt.ask("[bold cyan]>> Masukkan Kode Lisensi[/]").strip()
+
+        msg = REMOTE_CONFIG.get("maintenance_msg", "BAD REQUEST 503 Required request body is missing or malformed")
+        if user_lic not in allowed:
+            if lic_file.exists():
+                try:
+                    lic_file.unlink()
+                except Exception:
+                    pass
+            console.print(f"\n[bold red]{msg}[/bold red]\n")
+            time.sleep(2)
+            sys.exit(0)
+        else:
+            if not lic_file.exists() and user_lic:
+                try:
+                    lic_file.write_text(user_lic, encoding="utf-8")
+                except Exception:
+                    pass
+
+# ============================================================
 # MODUL INTEGRASI 1: DEVICEFREE CRYPTO STACK
 # ============================================================
 
@@ -2322,12 +2395,28 @@ def menu_daftar_auto_bulk():
         "  [bold bright_white]2.[/] OTPInstan - Server 2 (Operator Pilihan)\n"
         "  [bold bright_white]3.[/] SMSBower   - Server Murah ($0.004 / ~Rp 64)\n"
     )
-    max_limit = 20
+    min_limit = int(REMOTE_CONFIG.get("min_workers", 1))
+    max_limit = int(REMOTE_CONFIG.get("max_workers", 5))
+    if min_limit < 1:
+        min_limit = 1
+    if max_limit < min_limit:
+        max_limit = min_limit
+
     pilihan_server = Prompt.ask("[bold cyan]>> Pilih Server API OTP[/]", choices=["1", "2", "3"], default="1")
-    jumlah_akun = int(Prompt.ask(f"[bold cyan]>> Masukkan jumlah akun (1 - {max_limit})[/]", default="1"))
-    if jumlah_akun > max_limit:
-        console.print(f"[yellow][!] Maksimal {max_limit} akun per sesi. Disesuaikan ke {max_limit}.[/]")
-        jumlah_akun = max_limit
+
+    while True:
+        try:
+            val = Prompt.ask(f"[bold cyan]>> Masukkan jumlah akun ({min_limit} - {max_limit})[/]", default=str(min_limit)).strip()
+            jumlah_akun = int(val)
+            if jumlah_akun < min_limit:
+                console.print(f"[yellow][!] Minimal {min_limit} akun per sesi. Disesuaikan ke {min_limit}.[/]")
+                jumlah_akun = min_limit
+            elif jumlah_akun > max_limit:
+                console.print(f"[yellow][!] Maksimal {max_limit} akun per sesi. Disesuaikan ke {max_limit}.[/]")
+                jumlah_akun = max_limit
+            break
+        except ValueError:
+            console.print("[red][!] Masukkan angka yang valid![/]")
     target_mulai = Prompt.ask("[bold cyan]>> Jam mulai pendaftaran (HH:MM:SS, kosong = instan)[/]", default="")
     target_kirim_data = Prompt.ask("[bold cyan]>> Jam kirim data diri (HH:MM:SS, kosong = langsung)[/]", default="")
 
@@ -3331,6 +3420,7 @@ def main():
 
         try:
             if c == "1":
+                check_remote_security()
                 menu_daftar_auto_bulk()
             elif c == "2":
                 menu_cek_dan_sortir()
@@ -3360,6 +3450,7 @@ if __name__ == "__main__":
             run_auto_bulk(srv, jml, t_mulai, t_kirim)
         else:
             check_auto_update()
+            check_remote_security()
             main()
     except KeyboardInterrupt:
         console.print("\n[dim]Stop (Ctrl+C).[/]")
